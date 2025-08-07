@@ -17,7 +17,7 @@ for name in "${pokemon_list[@]}"; do
   if [ "$response" -eq 200 ]; then
     echo "Saved data to pokemon_data/${name}.json"
   else
-    echo "❌ Failed to fetch data for $name (Status: $response)"
+    echo "Failed to fetch data for $name (Status: $response)"
     rm -f "pokemon_data/${name}.json"  # remove incomplete file
   fi
   

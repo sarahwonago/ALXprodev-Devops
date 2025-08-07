@@ -1,16 +1,67 @@
 #!/bin/bash
 
-# Ensure the data.json file exists
-if [ ! -f data.json ]; then
-  echo "data.json not found. Please run the API automation script first."
+# Output and error setup
+mkdir -p pokemon_data
+ERROR_LOG="errors.log"
+> "$ERROR_LOG"
+
+# Pokémon list
+pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Track background process PIDs
+pids=()
+
+# Function to fetch a single Pokémon
+fetch_pokemon() {
+  name=$1
+  max_retries=3
+  attempt=1
+  success=false
+
+  echo "Fetching data for $name..."
+
+  while [ $attempt -le $max_retries ]; do
+    response=$(curl -s -w "%{http_code}" -o "pokemon_data/${name}.json" "https://pokeapi.co/api/v2/pokemon/$name")
+    
+    if [ "$response" -eq 200 ]; then
+      echo "Saved data to pokemon_data/${name}.json"
+      success=true
+      break
+    else
+      echo "Attempt $attempt failed for $name (Status: $response)"
+      ((attempt++))
+      sleep 1
+    fi
+  done
+
+  if ! $success; then
+    echo "Failed to fetch data for $name after $max_retries attempts." >> "$ERROR_LOG"
+    rm -f "pokemon_data/${name}.json"
+  fi
+}
+
+# Cleanup function to kill background jobs on exit or Ctrl+C
+cleanup() {
+  echo "Cleaning up background processes..."
+  for pid in "${pids[@]}"; do
+    kill "$pid" 2>/dev/null
+  done
   exit 1
-fi
+}
 
-# Extract and assign values to required variables
-name=$(jq -r '.name' data.json | sed 's/.*/\u&/')
-type=$(jq -r '.types[0].type.name' data.json | sed 's/.*/\u&/')
-formatted_weight=$(jq '.weight' data.json | awk '{ printf "%.0f", $1 / 10 }')
-formatted_height=$(jq '.height' data.json | awk '{ printf "%.1f", $1 / 10 }')
+# Trap interrupts and terminations
+trap cleanup INT TERM
 
-# Print in the required format
-echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall."
+# Run fetches in parallel and track PIDs
+for name in "${pokemon_list[@]}"; do
+  fetch_pokemon "$name" &
+  pids+=($!)
+done
+
+# Wait for all background jobs
+for pid in "${pids[@]}"; do
+  wait "$pid"
+done
+
+echo ""
+echo "All fetch operations completed."
